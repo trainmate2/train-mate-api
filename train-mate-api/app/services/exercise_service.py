@@ -11,8 +11,9 @@ def save_exercise(uid, name, calories_per_hour, public, category_id):
             'owner': uid,
             'category_id': category_id
         }
-        exercise_ref.set(exercise_data)  # Save the data
-        return exercise_ref.id  # Return the generated ID
+        exercise_ref.set(exercise_data)
+        exercise_data['exercise_id'] = exercise_ref.id
+        return True, exercise_data
     except Exception as e:
         print(f"Error saving exercise in Firestore: {e}")
         return None
@@ -28,11 +29,12 @@ def get_exercises(uid, show_public):
             # Fetch exercises created by the user
             exercises = exercises_ref.where('owner', '==', uid).stream()
 
-        return [exercise.to_dict() for exercise in exercises]
+        return [{"id": exercise.id, **exercise.to_dict()} for exercise in exercises]  # Añadimos el exercise_id
 
     except Exception as e:
         print(f"Error getting exercises from Firestore: {e}")
         return []
+
 
 # Delete Exercise
 def delete_exercise(uid, exercise_id):
@@ -73,14 +75,41 @@ def get_all_exercises():
         exercises = exercises_ref.stream()
         return [
             {
+                "id": exercise.id,  # Añadimos el id del ejercicio
                 "calories_per_hour": exercise.get("calories_per_hour"),
                 "name": exercise.get("name"),
                 "public": exercise.get("public")
             }
-            for exercise in (exercise.to_dict() for exercise in exercises)
+            for exercise in exercises  # No es necesario hacer to_dict antes
         ]
 
     except Exception as e:
         print(f"Error getting all exercises: {e}")
         return []
-    
+
+def get_exercise_by_category_id(category_id):
+    try:
+        exercises_ref = db.collection('exercises')
+        exercises = exercises_ref.where('category_id', '==', category_id).stream()
+        exercises_with_id = [{**exercise.to_dict(), 'exercise_id': exercise.id } for exercise in exercises]
+        return exercises_with_id
+
+    except Exception as e:
+        print(f"Error getting exercises by category ID: {e}")
+        return []
+
+
+def get_exercise_by_id_service(exercise_id):
+    try:
+        # Fetch the exercise from the database using the exercise ID
+        exercise_ref = db.collection('exercises').document(exercise_id)
+        exercise_doc = exercise_ref.get()
+
+        if not exercise_doc.exists:
+            return None
+
+        return exercise_doc.to_dict()
+
+    except Exception as e:
+        print(f"Error fetching exercise by ID: {e}")
+        return None

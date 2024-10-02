@@ -1,4 +1,3 @@
-
 from flask import Blueprint, request, jsonify
 from app.services.auth_service import verify_token_service
 from app.services.category_service import (
@@ -6,8 +5,19 @@ from app.services.category_service import (
     get_categories as get_categories_service,
     delete_category as delete_category_service,
     update_category as update_category_service,
-    get_category_by_id as get_category_by_id_service
+    get_category_by_id as get_category_by_id_service,
 )
+from app import limiter
+
+
+
+def exempt_from_limit():
+    origin = request.headers.get('Origin') or request.headers.get('Referer') or request.host
+    print(f"Origin detected: {origin}")
+    if origin in ['http://localhost:3000', 'https://train-mate-front.vercel.app']:
+        return True
+    return False
+
 
 category_bp = Blueprint('category_bp', __name__)
 
@@ -50,18 +60,20 @@ def save_category():
         isCustom = data['isCustom']
         owner = uid if isCustom else None
 
-        success, category_id = save_category_service(name, icon, isCustom, owner)
+        success, category = save_category_service(name, icon, isCustom, owner)
         if not success:
             return jsonify({"error": "Failed to save category"}), 500
 
-        return jsonify({"message": "Category saved successfully", "category_id": category_id}), 201
+        return jsonify({"message": "Category saved successfully", "category": category}), 201
 
     except Exception as e:
         print(f"Error saving category: {e}")
         return jsonify({"error": "Something went wrong"}), 500
+    
 
-# Obtener categorías
+# Obtener categorías con Rate Limit
 @category_bp.route('/get-categories', methods=['GET'])
+@limiter.limit("10 per hour", exempt_when=exempt_from_limit)  # Limitar a 10 solicitudes por hora excepto orígenes permitidos
 def get_categories():
     try:
         token = request.headers.get('Authorization')
@@ -76,14 +88,7 @@ def get_categories():
 
         categories = get_categories_service(uid)
         
-        # Add category_id to the returned data
-        categories_with_id = []
-        for category in categories:
-            category_data = category.to_dict()
-            category_data['category_id'] = category.id
-            categories_with_id.append(category_data)
-        
-        return jsonify({"categories": categories_with_id}), 200
+        return jsonify({"categories": categories}), 200
 
     except Exception as e:
         print(f"Error fetching categories: {e}")
